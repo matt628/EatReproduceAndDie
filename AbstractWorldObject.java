@@ -5,4 +5,5 @@ public class AbstractWorldObject {
     }
     public Vector2d getPosition(){ return position;}
 
+
 }

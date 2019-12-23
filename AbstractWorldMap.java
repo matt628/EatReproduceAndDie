@@ -4,77 +4,54 @@ import com.google.common.collect.Multimap;
 import java.util.*;
 
 public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
+    private boolean isRunning = true;
+    private MainFrame Layout = new MainFrame(this);
     private List<Animal> listOfAnimals = new ArrayList<>();
     private List<Animal> theDead =new ArrayList<>();
     private int lifespan = 0;
     private Multimap<Vector2d, AbstractWorldObject> map =  ArrayListMultimap.create();
-    MapVisualizer mapVisualizer;
+    private MapVisualizer mapVisualizer;
     private int dayCounter = 0;
-    protected Boundary boundary;
-    private int parousiaDay;
+    Boundary boundary;
     private int grassNumber;
-    private int startEnergy;
-    private MainFrame Layout = new MainFrame();
     private StatisticalData statisticalData;
+    Multiversum multiversum;
 
-    public AbstractWorldMap(int grassNumber, int parousiaDay, Boundary boundary,
-                            int startAnimalNumber, int startEnergy){
-        this.parousiaDay = parousiaDay;
+    public AbstractWorldMap(int grassNumber, Boundary boundary, Multiversum multiversum){
         this.grassNumber = grassNumber;
-        this.mapVisualizer = new MapVisualizer(this);
-        this.startEnergy = startEnergy;
         this.boundary = boundary;
-        mapVisualizer = new MapVisualizer(this);
+        this.multiversum = multiversum;
+        mapVisualizer = new MapVisualizer(map);
         statisticalData = new StatisticalData(this);
+
         placeGrass();
-        initialAnimalPlacement(startAnimalNumber);
+        initialAnimalPlacement(multiversum.getStartAnimalNumber());
 
     }
 
-
-    @Override
-    public void positionChanged(Vector2d oldPosition, Vector2d newPosition, Animal animal) {
-        if(oldPosition != null){
-            map.remove(oldPosition, animal);
-            map.put(newPosition, animal);
-        }
-        else map.put(newPosition,animal);
-    }
-
-    public boolean place(AbstractWorldObject object) throws IllegalArgumentException {
-        if(canMoveTo(object.getPosition())) {
-            map.put(object.getPosition(), object);
-            if(object instanceof Animal) {
-                listOfAnimals.add((Animal) object);
-                ((Animal) object).addObserver(this);
-            }
-            return true;
-        }
-        else {
-            throw new IllegalArgumentException("trying to place object at: " + object.getPosition() + ". Position is already occupied by an animal.");
-        }
-
-    }
-    void theBeginOfTime(){
-        for(int i = 0; i<parousiaDay; i++){
+//SIMULATION RUNING
+    public void theBeginOfTime() throws InterruptedException {
+        for(int i = 0; i<multiversum.getParousiaDay(); i++) {
             dayCounter++;
-            day();
+            if (isRunning) day();
+            else while (!isRunning) Thread.sleep(200);
+            Thread.sleep(800);
         }
     }
 
-    private void day(){
+    void day(){
+        placeGrass();
         movementTime();
         eatingTime();
         breedingTime();
         decayCorpses();
-        placeGrass();
         String string = this.toString();
         try {
             Layout.changeText(string);
+            Layout.actualiseStatistics(statisticalData.toString());
         } catch (Exception ignored){
 
         }
-        //System.out.println(this.toString());
     }
 
     private void decayCorpses() {
@@ -94,38 +71,22 @@ public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
 
        if(listOfAnimals.isEmpty()) throw new IllegalStateException("All animals became extinct before your arrival Lord.");
     }
-    void initialAnimalPlacement(int startAnimalNumber) {
-        for(int i = 0; i < startAnimalNumber; i++) {
-            Vector2d tmp = boundary.randomPosition();
-            Animal animal = new Animal(tmp, startEnergy, null, null);
-            place(animal);
-        }
-    }
-    void placeGrass(){
-        //IN SAVANNA
-        for(int i = 0; i < grassNumber/2; i++) {
-            Vector2d tmp = boundary.randomPositionSavanna();
-            Optional<Grass> grassOnPosition = getGrass(tmp);
-            if(grassOnPosition.isEmpty()) {
-                Grass grass = new Grass(tmp);
-                place(grass);
-                grassNumber++;
-            }
-            else grassOnPosition.get().increaseEnergy(6);
-        }
-        //IN JUNGLE
-        for(int i = 0; i < grassNumber/2; i++){
-            Vector2d tmp = boundary.randomPositionJungle();
-            if(!map.containsKey(tmp)) {
-                Grass grass = new Grass(tmp);
-                map.put(tmp, grass);
-                grassNumber++;
+    private void placeGrass(){//JUNGLE AND SAVANNA
+        for(int i = 0; i < 2*multiversum.getDailyGrassNumber(); i++) {
+            Vector2d tmp =null;
+            if(i%2 == 0)  //IN SAVANNA OR IN JUNGLE
+                tmp = boundary.randomPositionSavanna();
+            else
+                tmp = boundary.randomPositionJungle();
+            Optional<Grass> grassOnPosition = getGrassFromPosition(tmp);
+            if(!isAnimalHere(tmp)) {
+                if (grassOnPosition.isEmpty()) {
+                    Grass grass = new Grass(tmp);
+                    place(grass);
+                    grassNumber++;
+                } else grassOnPosition.get().increaseEnergy(6);
             }
         }
-    }
-
-    private Optional<Grass> getGrass(Vector2d tmp) {
-        return map.get(tmp).stream().filter(object -> object instanceof Grass).map(Grass.class::cast).findAny();
     }
 
     private void movementTime() {
@@ -138,37 +99,45 @@ public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
         for(Vector2d position : occupiedPositions){
             List<Animal> whoEats = new ArrayList<>();
             Collection<AbstractWorldObject> hereAre = map.get(position);
-            Grass grass = null;
-            for(AbstractWorldObject object : hereAre){
-                if(object instanceof Animal) {
-                    if (((Animal) object).sameEnergy(theStrongest(object.getPosition())))
-                        whoEats.add((Animal) object);
+            Grass grassHere = null;
+            if(hereAre.size()>1){
+                for(AbstractWorldObject object : hereAre){
+                    if(object instanceof Animal) {
+                        if (((Animal) object).sameEnergy(theStrongest(object.getPosition())))
+                            whoEats.add((Animal) object);
+                    }
+                    else if (object instanceof Grass) grassHere = (Grass) object;
                 }
-                else if (object instanceof Grass) grass = (Grass) object;
-
+                if(grassHere == null) return;
+                int energy = grassHere.getEnergy();
+                if(!whoEats.isEmpty()){
+                    grassNumber--;
+                    energy /= whoEats.size();
+                    int finalEnergy = energy; //JAVA makes me to do so ;(
+                    whoEats.forEach(animal -> animal.eat(finalEnergy));
+                    //AbstractWorldObject grass = hereAre.stream().filter(object -> object instanceof Grass).findAny().get();
+                    this.map.remove(position, grassHere);
+                }
+                //Functional code
+                //STREAM TO ARRAY??
+                /*whoEats = hereAre.stream().filter(object -> object instanceof Animal).filter(animal -> ((Animal) animal).sameEnergy(theStrongest(animal.getPosition())))
+                        .map(Animal.class::cast).toArray();*/
+                    /*             Optional<Grass> tmp = hereAre.stream().
+                        filter(object -> object instanceof Grass).map(Grass.class::cast).findAny();*/
             }
-            if(grass == null) return;
-            int energy = grass.getEnergy();
-            if(!whoEats.isEmpty()){
-                grassNumber--;
-                energy /= whoEats.size();
-                int finalEnergy = energy; //JAVA makes me to do so ;(
-                whoEats.forEach(animal -> animal.eat(finalEnergy));
-                map.remove(grass.getPosition(), grass);
-            }
-
         }
 
     }
 
 
-
+//BREEDING
     private void breedingTime() {
         HashMap<Vector2d, Animal> whoBreeds = new HashMap<>();
         for(Animal animal: listOfAnimals)
             if(isPartnerHere(animal.getPosition()) && animal.sameEnergy(theStrongest(animal.getPosition())))
                 whoBreeds.put(animal.getPosition(), animal);
-        whoBreeds.forEach((position, animal) -> animal.mate(findMatingPartner(position)));
+        if(!whoBreeds.isEmpty())
+            whoBreeds.forEach((position, animal) -> animal.mate(findMatingPartner(position)));
     }
     private Animal findMatingPartner(Vector2d position) {
         Collection<AbstractWorldObject> hereAre = map.get(position);
@@ -185,9 +154,31 @@ public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
     }
     private Comparator<AbstractWorldObject> comparator = Comparator.comparing(o ->
                  ((Animal) o).getEnergy()
-    );
+    ); //WHY it works?
+//PLACEMENT
+    void initialAnimalPlacement(int startAnimalNumber) {
+        for(int i = 0; i < startAnimalNumber; i++) {
+            Vector2d tmp = boundary.randomPosition();
+            Animal animal = new Animal(tmp, multiversum.getStartEnergy(), null, null, this);
+            place(animal);
+        }
+    }
+    public boolean place(AbstractWorldObject object) throws IllegalArgumentException {
+        if(canMoveTo(object.getPosition())) {
+            map.put(object.getPosition(), object);
+            if(object instanceof Animal) {
+                listOfAnimals.add((Animal) object);
+                ((Animal) object).addObserver(this);
+            }
+            return true;
+        }
+        else {
+            throw new IllegalArgumentException("trying to place object at: " + object.getPosition() + ". Position is already occupied by an animal.");
+        }
 
+    }
 
+//OTHER METHODS
     public Animal theStrongest(Vector2d position){
         Collection<AbstractWorldObject> positionList = map.get(position);
         Animal strongest = (Animal) positionList.stream().filter(object -> object instanceof Animal).findAny().get();
@@ -201,11 +192,32 @@ public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
 
     }
 
+    private boolean isAnimalHere(Vector2d position){
+        Collection<AbstractWorldObject> hereAre = map.get(position);
+        return hereAre.stream().anyMatch(object -> object instanceof Animal);
+    }
+
+    private Optional<Grass> getGrassFromPosition(Vector2d tmp) {
+        return map.get(tmp).stream().filter(object -> object instanceof Grass).map(Grass.class::cast).findAny();
+    }
+
     public Object objectAt(Vector2d position) {
         return map.get(position);
     }
 
+    public void bendTime(){
+        isRunning = !isRunning;
+    }
+
     @Override
+    public void positionChanged(Vector2d oldPosition, Vector2d newPosition, Animal animal) {
+        if(oldPosition != null){
+            map.remove(oldPosition, animal);
+            map.put(newPosition, animal);
+        }
+        else map.put(newPosition,animal);
+    }
+
     public boolean canMoveTo(Vector2d position) {
         return true;
 
@@ -219,8 +231,14 @@ public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
         return mapVisualizer.draw(new Vector2d(0,0), boundary.getUpperRight());
     }
 
+//GETTERS
 
-    public int size(){
+
+    public StatisticalData getStatisticalData() {
+        return statisticalData;
+    }
+
+    public int getSize(){
         return map.size();
     }
 
@@ -232,9 +250,6 @@ public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
         return listOfAnimals;
     }
 
-    public int getStartEnergry(){
-        return startEnergy;
-    }
 
     public List<Animal> getTheDead() {
         return theDead;
@@ -246,5 +261,9 @@ public class AbstractWorldMap implements IWorldMap, IPositionChangeObserver{
 
     public int getLifespan() {
         return lifespan;
+    }
+
+    public int getDayCounter() {
+        return dayCounter;
     }
 }

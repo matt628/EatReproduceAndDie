@@ -79,12 +79,8 @@ public class Genome {
     @Override
 
     public String toString() {
-       // try {
             return Arrays.toString(getGeneCategory(this.genome));
-        //}
-        //catch (NullPointerException ex){
-        //    return "There is no gene";
-        //}
+
     }
 
 
