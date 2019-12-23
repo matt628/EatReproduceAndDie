@@ -13,15 +13,7 @@ public interface IWorldMap {
      *            The position checked for the movement possibility.
      * @return True if the object can move to that position.
      */
-    boolean canMoveTo(Vector2d position);
 
-    /**
-     * Place a animal on the map.
-     *
-     * @param animal
-     *            The animal to place on the map.
-     * @return True if the animal was placed. The animal cannot be placed if the map is already occupied.
-     */
     boolean place(AbstractWorldObject animal);
 
     /**

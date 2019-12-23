@@ -1,4 +1,4 @@
-public class Boundary {
+public class Boundary {//KEEPS THE BOUNDARY OF THE A GRASS FIELD.
     Vector2d upperRight;
     Vector2d jungleLowerLeft;
     Vector2d jungleUpperRight;
@@ -12,7 +12,8 @@ public class Boundary {
         return Vector2d.random(jungleLowerLeft, jungleUpperRight);
     }
     public Vector2d randomPositionSavanna(){
-        return Vector2d.random(new Vector2d(0,0), upperRight);
+
+        return Vector2d.random(new Vector2d(0,0), upperRight); //todo
     }
     public Vector2d randomPosition(){
         return Vector2d.random(new Vector2d(0,0), upperRight);
@@ -27,7 +28,7 @@ public class Boundary {
         return tmp;
     }
     public boolean isInBoundary(Vector2d position){
-        return  0 < position.getX() && position.getX() < upperRight.getX() && 0 < position.getY() && position.getY() < upperRight.getY();
+        return  0 <= position.getX() && position.getX() <= upperRight.getX() && 0 <= position.getY() && position.getY() <= upperRight.getY();
     }
 
     public Vector2d getUpperRight() {

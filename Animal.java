@@ -5,18 +5,21 @@ public class Animal extends AbstractWorldObject {
     private MapDirection dir;
     private Set<IPositionChangeObserver> observerSet;
     private  int energy;
-    private  int childrenNumber = 0;
     private ArrayList<Animal> offspring = new ArrayList<>();
     private  Genome genome;
     private  int age;
+    private  int birthDate;
+    private  AbstractWorldMap map;
 
-    Animal(Vector2d initialPosition, int energy, Animal parent1, Animal parent2){
+    Animal(Vector2d initialPosition, int energy, Animal parent1, Animal parent2, AbstractWorldMap map){
         super(initialPosition);
         this.dir = MapDirection.randomDirection();
         this.observerSet = new HashSet<>();
         this.energy = energy;
         this.genome = new Genome(parent1, parent2);
         this.age = 0;
+        this.map = map;
+        this.birthDate = map.getDayCounter();
     }
 
 
@@ -24,10 +27,9 @@ public class Animal extends AbstractWorldObject {
     void mate(Animal matingPartner){
         if(this == matingPartner) return;
         if(this.getAge() < 5 && matingPartner.getAge() < 5) return;
-        childrenNumber++;
-        int childEnergy = (int) ((this.getEnergy() + matingPartner.getEnergy())/4);
-        Animal child = new Animal(this.position, childEnergy, this, matingPartner);
-        child.positionChanged(null, child.getPosition());
+        int childEnergy = (this.getEnergy() + matingPartner.getEnergy())/4;
+        Animal child = new Animal(this.position, childEnergy, this, matingPartner, map);
+        map.place(child);
         this.afterMatingExhaustion(); this.rememberOffspring(child);
         matingPartner.afterMatingExhaustion(); matingPartner.rememberOffspring(child);
     }
@@ -40,7 +42,7 @@ public class Animal extends AbstractWorldObject {
 
 
     public String toString(){
-        int energy = (int) this.energy;
+        int energy = this.energy;
         return String.valueOf(energy);
     }
 
@@ -50,6 +52,7 @@ public class Animal extends AbstractWorldObject {
         this.randomRotate();
         Vector2d oldPosition = position;
         position = position.add(this.dir.toUnitVector());
+        position = map.boundary.keepInsideBoundaries(position);
         positionChanged(oldPosition,position);
     }
 
@@ -73,14 +76,36 @@ public class Animal extends AbstractWorldObject {
             observer.positionChanged(oldPosition, newPosition, this);
 
         }
-    public int getEnergy() {
-        return energy;
-    }
-
-
 
     public boolean sameEnergy(Animal competitor){
         return (java.lang.Math.abs(this.getEnergy() - competitor.getEnergy()) < 0.1);
+    }
+//STATISTICAL INFORMATION
+    int countChildrenTillDay(int day){
+        int counter = 0;
+        for (Animal offspring : this.getOffspring()) {
+            if(offspring.getBirthDate() >= day) counter++;
+        }
+        return counter;
+    }
+
+    int countOffspringTillDay(int day){
+        HashSet<Animal> counted = new HashSet<>();
+        countOffspringInnerFunction(this, counted, day);
+        return counted.size();
+    }
+    private void countOffspringInnerFunction(Animal animal, HashSet<Animal> counted, int day){
+        for(Animal offspring : animal.getOffspring()){
+            if(offspring.getBirthDate() >=  day) {
+                counted.add(offspring);
+                countOffspringInnerFunction(offspring, counted, day);
+            }
+        }
+    }
+
+ //GETTERS
+    public int getEnergy() {
+        return energy;
     }
 
     public Genome getGenome() {
@@ -96,7 +121,20 @@ public class Animal extends AbstractWorldObject {
     }
 
     public int getChildrenNumber() {
-        return childrenNumber;
+        return offspring.size();
+    }
+
+    public int getDeathDay(){
+        if(age+birthDate+1 < map.getDayCounter()) return age+birthDate;
+        return -1;
+    }
+
+    public int getCurrentYear() {
+        return age+birthDate;
+    }
+
+    public int getBirthDate() {
+        return birthDate;
     }
 }
 
